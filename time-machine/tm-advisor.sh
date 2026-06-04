@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # time-machine/tm-advisor.sh — Time Machine status advisor for Mosyle
-# 2026-06-04 v1.8 — fix BASH_SOURCE[0] unbound var when run via curl|bash;
+# 2026-06-04 v1.9 — fix SnapshotDates sort (plist order not guaranteed); BASH_SOURCE fix
 #                   HA_URL env var for dashboard base URL
 #
 # Collects Time Machine status and sends Slack alerts based on days since
@@ -185,10 +185,11 @@ collect_tm_status() {
 
     if [[ "$TM_LAST_BACKUP" == "unknown" ]]; then
         local snap_date
+        # sort — plist array order is not guaranteed newest-last
         snap_date=$(echo "$plist_dump" \
             | grep '"SnapshotDates"' -A500 \
             | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} \+[0-9]{4}' \
-            | tail -1) || true
+            | sort | tail -1) || true
         if [[ -n "$snap_date" ]]; then
             TM_LAST_BACKUP="$snap_date"
             TM_LAST_BACKUP_SRC="plist"
