@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # time-machine/tm-advisor.sh — Time Machine status advisor for Mosyle
-# 2026-06-04 v1.4 — fix logging: use /var/log when root, /tmp otherwise (no tee errors)
+# 2026-06-04 v1.6 — SnapshotDates -A500; CONNECTED+NO MOUNT = URGENT; location fallback
 #                        scope; fix lib loading via temp files; add logfile;
 #                        fix date math; deduplicate plutil calls
 #
@@ -145,7 +145,7 @@ collect_tm_status() {
     if [[ "$TM_LAST_BACKUP" == "unknown" ]]; then
         local snap_date
         snap_date=$(echo "$plist_dump" \
-            | grep '"SnapshotDates"' -A100 \
+            | grep '"SnapshotDates"' -A500 \
             | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} \+[0-9]{4}' \
             | tail -1) || true
         if [[ -n "$snap_date" ]]; then
@@ -209,10 +209,12 @@ determine_severity() {
 
     [[ "$TM_CONFIGURED" == "NO" ]] && { SEVERITY="UNCONFIGURED"; SEVERITY_EMOJI="⚫"; return; }
 
-    # No confirmed backup date in plist — treat as urgent if drive is absent,
-    # unknown if drive is present (may just need to mount to get date)
+    # No confirmed backup date in plist
     if [[ "$TM_LAST_BACKUP_DAYS" -lt 0 ]]; then
-        if [[ "$TM_DRIVE_CONNECTED" == "NO" ]]; then
+        # Drive connected but won't mount — likely corrupt/failing drive, treat as urgent
+        if [[ "$TM_DRIVE_CONNECTED" == "YES" && "$TM_DRIVE_MOUNTED" == "NO" ]]; then
+            SEVERITY="URGENT"; SEVERITY_EMOJI="🔴"
+        elif [[ "$TM_DRIVE_CONNECTED" == "NO" ]]; then
             SEVERITY="URGENT"; SEVERITY_EMOJI="🔴"
         else
             SEVERITY="UNKNOWN"; SEVERITY_EMOJI="❓"

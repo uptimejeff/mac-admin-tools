@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # common/device-info.sh — Collect device hardware, power, USB, and location info
-# 2026-06-04 v1.2 — fix adapter wattage doubling when name already contains watts
+# 2026-06-04 v1.3 — location: single curl -4 ipinfo.io call; M4 adapter name fallback
 # Source this file; do not execute directly.
 #
 # After sourcing, call: collect_device_info
@@ -39,8 +39,13 @@ collect_device_info() {
     # Adapter details from ioreg (single call)
     local ioreg_batt
     ioreg_batt=$(ioreg -r -c AppleSmartBattery 2>/dev/null | grep '"AdapterDetails"')
+    # Try "Name" first (M1-M3), fall back to "Description" (M4+)
     DI_ADAPTER=$(echo "$ioreg_batt" | grep -oE '"Name"="[^"]*"' | head -1 \
         | sed 's/"Name"="\(.*\)"/\1/')
+    if [[ -z "$DI_ADAPTER" ]]; then
+        DI_ADAPTER=$(echo "$ioreg_batt" | grep -oE '"Description"="[^"]*"' | head -1 \
+            | sed 's/"Description"="\(.*\)"/\1/')
+    fi
     local adapter_watts
     adapter_watts=$(echo "$ioreg_batt" | grep -oE '"Watts"=[0-9]+' | head -1 \
         | sed 's/"Watts"=//')
@@ -70,32 +75,44 @@ collect_device_info() {
         | sed 's/.*Device Name: //' | xargs | tr ' ' ',' | sed 's/,/, /g') || true
     [[ -z "$DI_TB_DEVICES" ]] && DI_TB_DEVICES="none"
 
-    # --- Location via public IP ---
-    DI_PUBLIC_IP=$(curl -fsSL --max-time 5 https://api.ipify.org 2>/dev/null || true)
+    # --- Location via public IP (single call, IPv4 forced) ---
+    DI_PUBLIC_IP="unknown"
     DI_LOCATION="unknown"
     DI_LOCATION_NOTE=""
 
-    if [[ -n "$DI_PUBLIC_IP" ]]; then
-        local geo
-        geo=$(curl -fsSL --max-time 5 "https://ipinfo.io/${DI_PUBLIC_IP}/json" 2>/dev/null || true)
-        if [[ -n "$geo" ]]; then
-            local city region org
-            city=$(python3 -c   'import json,sys; d=json.load(sys.stdin); print(d.get("city",""))' \
-                <<< "$geo" 2>/dev/null || true)
-            region=$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("region",""))' \
-                <<< "$geo" 2>/dev/null || true)
-            org=$(python3 -c    'import json,sys; d=json.load(sys.stdin); print(d.get("org",""))' \
-                <<< "$geo" 2>/dev/null || true)
-            DI_LOCATION="${city}, ${region} (${org})"
+    local geo
+    geo=$(curl -4 -fsSL --max-time 5 https://ipinfo.io/json 2>/dev/null || true)
 
-            case "$DI_PUBLIC_IP" in
-                72.203.214.*|70.191.128.*)
-                    DI_LOCATION_NOTE="likely: office"
-                    ;;
-                *)
-                    DI_LOCATION_NOTE="likely: home or remote"
-                    ;;
-            esac
+    if [[ -n "$geo" ]]; then
+        local ip city region org
+        ip=$(python3 -c     'import json,sys; d=json.load(sys.stdin); print(d.get("ip",""))' \
+            <<< "$geo" 2>/dev/null || true)
+        city=$(python3 -c   'import json,sys; d=json.load(sys.stdin); print(d.get("city",""))' \
+            <<< "$geo" 2>/dev/null || true)
+        region=$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("region",""))' \
+            <<< "$geo" 2>/dev/null || true)
+        org=$(python3 -c    'import json,sys; d=json.load(sys.stdin); print(d.get("org",""))' \
+            <<< "$geo" 2>/dev/null || true)
+
+        [[ -n "$ip" ]] && DI_PUBLIC_IP="$ip"
+
+        # Build location string — fall back gracefully if geo data is sparse
+        if [[ -n "$city" && -n "$region" ]]; then
+            DI_LOCATION="${city}, ${region}"
+            [[ -n "$org" ]] && DI_LOCATION="${DI_LOCATION} (${org})"
+        elif [[ -n "$org" ]]; then
+            DI_LOCATION="$org"
+        elif [[ -n "$ip" ]]; then
+            DI_LOCATION="$ip (no geo data)"
         fi
+
+        case "$DI_PUBLIC_IP" in
+            72.203.214.*|70.191.128.*)
+                DI_LOCATION_NOTE="likely: office"
+                ;;
+            *)
+                DI_LOCATION_NOTE="likely: home or remote"
+                ;;
+        esac
     fi
 }
