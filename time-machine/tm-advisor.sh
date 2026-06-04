@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # time-machine/tm-advisor.sh — Time Machine status advisor for Mosyle
-# 2026-06-04 v1.7 — alert deduplication via state file; dashboard link in Slack;
+# 2026-06-04 v1.8 — fix BASH_SOURCE[0] unbound var when run via curl|bash;
 #                   HA_URL env var for dashboard base URL
 #
 # Collects Time Machine status and sends Slack alerts based on days since
@@ -94,7 +94,7 @@ save_alert_state() {
 _LIB_DIR=$(mktemp -d)
 trap 'rm -rf "$_LIB_DIR"' EXIT
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
 COMMON_DIR="${SCRIPT_DIR}/../common"
 
 if [[ -f "${COMMON_DIR}/slack.sh" && -f "${COMMON_DIR}/device-info.sh" ]]; then

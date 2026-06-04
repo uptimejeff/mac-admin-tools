@@ -36,7 +36,7 @@ log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [tm-autobackup] $*" | tee -a "$LOGFIL
 _LIB_DIR=$(mktemp -d)
 trap 'rm -rf "$_LIB_DIR"' EXIT
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
 COMMON_DIR="${SCRIPT_DIR}/../common"
 
 if [[ -f "${COMMON_DIR}/slack.sh" ]]; then
