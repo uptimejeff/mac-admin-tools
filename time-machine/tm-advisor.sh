@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # time-machine/tm-advisor.sh — Time Machine status advisor for Mosyle
-# 2026-06-04 v1.3 — fix: UNKNOWN+no drive → URGENT; add AttemptDates fallback for IT
+# 2026-06-04 v1.4 — fix logging: use /var/log when root, /tmp otherwise (no tee errors)
 #                        scope; fix lib loading via temp files; add logfile;
 #                        fix date math; deduplicate plutil calls
 #
@@ -31,9 +31,15 @@
 # Intentionally NO -e: grep returns 1 on no match, which is normal and should not abort
 set -uo pipefail
 
-LOGFILE="/var/log/tm-advisor.log"
 TM_PLIST="/Library/Preferences/com.apple.TimeMachine.plist"
 BASE_URL="https://raw.githubusercontent.com/uptimejeff/mac-admin-tools/main"
+
+# Use /var/log when root (Mosyle), fall back to /tmp for manual/non-root runs
+if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    LOGFILE="/var/log/tm-advisor.log"
+else
+    LOGFILE="/tmp/tm-advisor.log"
+fi
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [tm-advisor] $*" | tee -a "$LOGFILE"; }
 
