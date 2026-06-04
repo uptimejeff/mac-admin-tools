@@ -34,8 +34,8 @@ set -uo pipefail
 TM_PLIST="/Library/Preferences/com.apple.TimeMachine.plist"
 BASE_URL="https://raw.githubusercontent.com/uptimejeff/mac-admin-tools/main"
 
-# Use /var/log when root (Mosyle), fall back to /tmp for manual/non-root runs
-if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+# Use /var/log when writable (root/Mosyle), fall back to /tmp for manual/non-root runs
+if touch /var/log/tm-advisor.log 2>/dev/null; then
     LOGFILE="/var/log/tm-advisor.log"
 else
     LOGFILE="/tmp/tm-advisor.log"
