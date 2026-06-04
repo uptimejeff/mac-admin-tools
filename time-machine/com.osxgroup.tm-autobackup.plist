@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.osxgroup.tm-autobackup.plist
+  LaunchDaemon — triggers tm-autobackup.sh when any volume mounts.
+  Deploy via Mosyle to /Library/LaunchDaemons/
+  The script self-validates that the mounted volume is the TM destination.
+
+  Env vars injected here or via Mosyle custom script pre-deploy:
+    SLACK_ITDEPT_ALERTS, MOSYLE_DEVICE_NAME, MOSYLE_USER_EMAIL
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.osxgroup.tm-autobackup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/usr/local/osxgroup/tm-autobackup.sh</string>
+    </array>
+
+    <!-- Fire when a volume is mounted -->
+    <key>StartOnMount</key>
+    <true/>
+
+    <!-- Also run once at load (catches already-mounted drives) -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/var/log/tm-autobackup.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/tm-autobackup.log</string>
+
+    <!-- Throttle: don't re-fire more than once per 5 minutes -->
+    <key>ThrottleInterval</key>
+    <integer>300</integer>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- Populated by Mosyle deploy script using %variables% -->
+        <key>SLACK_ITDEPT_ALERTS</key>
+        <string>REPLACE_SLACK_WEBHOOK</string>
+        <key>MOSYLE_DEVICE_NAME</key>
+        <string>REPLACE_DEVICE_NAME</string>
+        <key>MOSYLE_USER_EMAIL</key>
+        <string>REPLACE_USER_EMAIL</string>
+    </dict>
+</dict>
+</plist>
