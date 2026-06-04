@@ -234,6 +234,7 @@ determine_severity() {
 build_user_msg() {
     local user_first="${MOSYLE_USER_FIRSTNAME:-User}"
     local days_str="${TM_LAST_BACKUP_DAYS} days"
+    [[ "$TM_LAST_BACKUP_DAYS" -lt  0 ]] && days_str="an unknown amount of time"
     [[ "$TM_LAST_BACKUP_DAYS" -eq 0 ]] && days_str="today"
     [[ "$TM_LAST_BACKUP_DAYS" -eq 1 ]] && days_str="1 day"
 
@@ -265,6 +266,7 @@ To back up now, click the Time Machine icon in your menu bar and choose *Back Up
 build_slack_message() {
     local device_name="${MOSYLE_DEVICE_NAME:-${DI_SERIAL:-unknown}}"
     local days_str="${TM_LAST_BACKUP_DAYS} days"
+    [[ "$TM_LAST_BACKUP_DAYS" -lt  0 ]] && days_str="unknown"
     [[ "$TM_LAST_BACKUP_DAYS" -eq 0 ]] && days_str="today"
     [[ "$TM_LAST_BACKUP_DAYS" -eq 1 ]] && days_str="1 day"
 

@@ -45,8 +45,9 @@ collect_device_info() {
     adapter_watts=$(echo "$ioreg_batt" | grep -oE '"Watts"=[0-9]+' | head -1 \
         | sed 's/"Watts"=//')
     [[ -z "$DI_ADAPTER" ]] && DI_ADAPTER="unknown"
-    # Only prepend wattage if the adapter name doesn't already contain it
-    if [[ -n "$adapter_watts" ]] && ! echo "$DI_ADAPTER" | grep -q "${adapter_watts}W"; then
+    # Prepend actual wattage, stripping any existing wattage prefix from the name
+    if [[ -n "$adapter_watts" ]]; then
+        DI_ADAPTER=$(echo "$DI_ADAPTER" | sed 's/^[0-9]*W //')
         DI_ADAPTER="${adapter_watts}W ${DI_ADAPTER}"
     fi
 
