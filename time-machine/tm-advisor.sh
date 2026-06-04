@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # time-machine/tm-advisor.sh — Time Machine status advisor for Mosyle
-# 2026-06-04 v1.2 — fix: "0 days" → "today"; fix adapter wattage doubling
+# 2026-06-04 v1.3 — fix: UNKNOWN+no drive → URGENT; add AttemptDates fallback for IT
 #                        scope; fix lib loading via temp files; add logfile;
 #                        fix date math; deduplicate plutil calls
 #
@@ -79,6 +79,7 @@ collect_tm_status() {
     TM_REQUIRES_AC="unknown"
     TM_RUNNING="NO"
     TM_DRIVE_LAST_SEEN=""
+    TM_LAST_ATTEMPT=""
 
     [[ ! -f "$TM_PLIST" ]] && return
 
@@ -147,6 +148,12 @@ collect_tm_status() {
         fi
     fi
 
+    # Last attempt date — from AttemptDates in plist (not confirmed success, but useful for IT)
+    TM_LAST_ATTEMPT=$(echo "$plist_dump" \
+        | grep '"AttemptDates"' -A20 \
+        | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} \+[0-9]{4}' \
+        | tail -1) || true
+
     # Days since last backup — use python3 for robust cross-format date math
     if [[ "$TM_LAST_BACKUP" != "unknown" ]]; then
         TM_LAST_BACKUP_DAYS=$(python3 - "$TM_LAST_BACKUP" <<'PYEOF' 2>/dev/null || echo -1
@@ -194,8 +201,18 @@ determine_severity() {
     SEVERITY="OK"
     SEVERITY_EMOJI="✅"
 
-    [[ "$TM_CONFIGURED"      == "NO" ]] && { SEVERITY="UNCONFIGURED"; SEVERITY_EMOJI="⚫"; return; }
-    [[ "$TM_LAST_BACKUP_DAYS" -lt  0 ]] && { SEVERITY="UNKNOWN";      SEVERITY_EMOJI="❓"; return; }
+    [[ "$TM_CONFIGURED" == "NO" ]] && { SEVERITY="UNCONFIGURED"; SEVERITY_EMOJI="⚫"; return; }
+
+    # No confirmed backup date in plist — treat as urgent if drive is absent,
+    # unknown if drive is present (may just need to mount to get date)
+    if [[ "$TM_LAST_BACKUP_DAYS" -lt 0 ]]; then
+        if [[ "$TM_DRIVE_CONNECTED" == "NO" ]]; then
+            SEVERITY="URGENT"; SEVERITY_EMOJI="🔴"
+        else
+            SEVERITY="UNKNOWN"; SEVERITY_EMOJI="❓"
+        fi
+        return
+    fi
 
     if   [[ "$TM_LAST_BACKUP_DAYS" -ge "$TM_THRESHOLD_URGENT" ]]; then
         SEVERITY="URGENT"; SEVERITY_EMOJI="🔴"
@@ -273,6 +290,7 @@ ${USER_MSG}
 🔧 *TECHNICAL DETAILS*
 
 Last backup:      ${TM_LAST_BACKUP} (${days_str} ago, src: ${TM_LAST_BACKUP_SRC})
+Last attempt:     ${TM_LAST_ATTEMPT:-n/a}
 Drive status:     connected=${TM_DRIVE_CONNECTED}  mounted=${TM_DRIVE_MOUNTED}${last_seen_line}
 Drive name:       ${TM_DEST_NAME} (${TM_DEST_KIND})
 Drive UUID:       ${TM_DEST_UUID:-n/a}${usage_note}

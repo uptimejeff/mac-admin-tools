@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # common/slack.sh — Shared Slack posting functions
-# 2026-06-04 v1.1
+# 2026-06-04 v1.2 — add DRY_RUN=1 support
 # Source this file; do not execute directly.
 #
 # Required env vars (set by Mosyle or caller):
@@ -13,6 +13,14 @@
 # Usage: slack_post_it <text>
 slack_post_it() {
     local text="$1"
+
+    # DRY_RUN=1 — print to stdout instead of posting to Slack (for testing)
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        echo "--- DRY RUN: Slack message would be ---"
+        echo "$text"
+        echo "--- end ---"
+        return 0
+    fi
 
     if [[ -z "${SLACK_ITDEPT_ALERTS:-}" ]]; then
         echo "SLACK_ITDEPT_ALERTS not set — skipping Slack post" >&2
