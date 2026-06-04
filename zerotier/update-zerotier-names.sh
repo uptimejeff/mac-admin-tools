@@ -8,9 +8,15 @@
 # --- Configuration ---
 
 # ZeroTier Network ID and API Token.
-# These should be populated by your MDM solution.
-ZT_NETWORK="1d719394049bff5c"
-ZT_TOKEN="REDACTED"
+# Injected by Mosyle — do NOT hardcode here (this file is public on GitHub).
+# Set in the Mosyle script header:
+#   export ZT_NETWORK="your_network_id"
+#   export ZT_TOKEN="your_api_token"
+#   curl -fsSL https://raw.githubusercontent.com/uptimejeff/mac-admin-tools/main/zerotier/update-zerotier-names.sh | bash
+if [[ -z "$ZT_NETWORK" || -z "$ZT_TOKEN" ]]; then
+    echo "[FAIL] ZT_NETWORK and ZT_TOKEN must be set as environment variables"
+    exit 1
+fi
 
 # --- Script Body ---
 
