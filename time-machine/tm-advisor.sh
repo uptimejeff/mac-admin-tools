@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # time-machine/tm-advisor.sh — Time Machine status advisor for Mosyle
-# 2026-06-04 v1.6 — SnapshotDates -A500; CONNECTED+NO MOUNT = URGENT; location fallback
-#                        scope; fix lib loading via temp files; add logfile;
-#                        fix date math; deduplicate plutil calls
+# 2026-06-04 v1.7 — alert deduplication via state file; dashboard link in Slack;
+#                   HA_URL env var for dashboard base URL
 #
 # Collects Time Machine status and sends Slack alerts based on days since
 # last successful backup to external destination.
@@ -20,6 +19,9 @@
 #   TM_THRESHOLD_NOTICE        — days before NOTICE (default 4)
 #   TM_THRESHOLD_ALERT         — days before ALERT (default 7)
 #   TM_THRESHOLD_URGENT        — days before URGENT (default 14)
+#   TM_ALERT_REPEAT_DAYS       — re-alert on same severity after N days (default 7)
+#   HA_URL                     — HealthAdvisor dashboard base URL for Slack links
+#                                e.g. http://100.99.1.123:3000
 #   MOSYLE_DEVICE_NAME         — injected by Mosyle as %DeviceName%
 #   MOSYLE_USER_EMAIL          — injected by Mosyle as %Email%
 #   MOSYLE_USER_FIRSTNAME      — injected by Mosyle as %FirstName%
@@ -47,6 +49,45 @@ log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [tm-advisor] $*" | tee -a "$LOGFILE";
 TM_THRESHOLD_NOTICE=${TM_THRESHOLD_NOTICE:-4}
 TM_THRESHOLD_ALERT=${TM_THRESHOLD_ALERT:-7}
 TM_THRESHOLD_URGENT=${TM_THRESHOLD_URGENT:-14}
+TM_ALERT_REPEAT_DAYS=${TM_ALERT_REPEAT_DAYS:-7}
+HA_URL=${HA_URL:-}
+
+# State file — tracks last severity sent + timestamp for deduplication
+STATE_FILE="/var/db/osxgroup/tm-advisor-state"
+mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || true
+
+# ── Alert deduplication ───────────────────────────────────────────────────────
+# Returns 0 (send alert) or 1 (suppress — same severity sent recently)
+should_send_alert() {
+    local current_severity="$1"
+    [[ "$current_severity" == "OK" ]] && return 1  # never send for OK
+
+    if [[ -f "$STATE_FILE" ]]; then
+        local last_severity last_sent_epoch now_epoch elapsed_days
+        last_severity=$(awk -F= '/severity/{print $2}' "$STATE_FILE" 2>/dev/null)
+        last_sent_epoch=$(awk -F= '/sent_epoch/{print $2}' "$STATE_FILE" 2>/dev/null)
+        now_epoch=$(date +%s)
+        elapsed_days=$(( (now_epoch - ${last_sent_epoch:-0}) / 86400 ))
+
+        # Always send if severity worsened
+        if [[ "$last_severity" != "$current_severity" ]]; then
+            local severities="OK NOTICE ALERT URGENT UNCONFIGURED UNKNOWN"
+            local last_idx current_idx
+            last_idx=$(echo "$severities" | tr ' ' '\n' | grep -n "^${last_severity}$" | cut -d: -f1)
+            current_idx=$(echo "$severities" | tr ' ' '\n' | grep -n "^${current_severity}$" | cut -d: -f1)
+            [[ "${current_idx:-0}" -gt "${last_idx:-0}" ]] && return 0  # worsened — send
+        fi
+
+        # Same or better severity — suppress unless repeat window elapsed
+        [[ "$elapsed_days" -lt "$TM_ALERT_REPEAT_DAYS" ]] && return 1  # suppress
+    fi
+    return 0  # no state file yet — send
+}
+
+save_alert_state() {
+    local severity="$1"
+    printf 'severity=%s\nsent_epoch=%s\n' "$severity" "$(date +%s)" > "$STATE_FILE" 2>/dev/null || true
+}
 
 # ── Load common libraries ─────────────────────────────────────────────────────
 # Fetch to temp files rather than eval — safer and debuggable
@@ -320,6 +361,13 @@ Location:         ${DI_PUBLIC_IP:-unknown} → ${DI_LOCATION:-unknown}
 Device:           ${device_name} | macOS ${DI_OS:-?} | ${DI_CHIP:-?}
 Serial:           ${DI_SERIAL:-unknown}
 Console user:     ${DI_CONSOLE_USER:-unknown}"
+
+    # Append dashboard link if HA_URL is configured
+    if [[ -n "${HA_URL:-}" && -n "${DI_SERIAL:-}" ]]; then
+        SLACK_MESSAGE="${SLACK_MESSAGE}
+
+🖥 <${HA_URL}/device/${DI_SERIAL}|View in HealthAdvisor dashboard>"
+    fi
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -333,14 +381,21 @@ main() {
 
     if [[ "$SEVERITY" == "OK" ]]; then
         log "TM OK — last backup ${TM_LAST_BACKUP_DAYS} days ago, no action needed"
+        # Clear state so next alert fires immediately if status worsens
+        [[ -f "$STATE_FILE" ]] && printf 'severity=OK\nsent_epoch=%s\n' "$(date +%s)" > "$STATE_FILE" || true
         exit 0
     fi
 
     build_user_msg
     build_slack_message
 
-    log "Sending ${SEVERITY} alert to IT Slack channel"
-    slack_post_it "$SLACK_MESSAGE"
+    if should_send_alert "$SEVERITY"; then
+        log "Sending ${SEVERITY} alert to IT Slack channel"
+        slack_post_it "$SLACK_MESSAGE"
+        save_alert_state "$SEVERITY"
+    else
+        log "Suppressing Slack — ${SEVERITY} already sent recently (repeat window: ${TM_ALERT_REPEAT_DAYS}d)"
+    fi
 
     # User DM — Phase 2, only fires when SLACK_BOT_TOKEN is set
     if [[ -n "${SLACK_BOT_TOKEN:-}" && -n "${MOSYLE_USER_EMAIL:-}" ]]; then
