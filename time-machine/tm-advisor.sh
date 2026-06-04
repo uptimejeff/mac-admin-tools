@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # time-machine/tm-advisor.sh — Time Machine status advisor for Mosyle
-# 2026-06-04 v1.1 — fix: remove set -e (breaks on grep no-match); fix $user_msg
+# 2026-06-04 v1.2 — fix: "0 days" → "today"; fix adapter wattage doubling
 #                        scope; fix lib loading via temp files; add logfile;
 #                        fix date math; deduplicate plutil calls
 #
@@ -211,6 +211,7 @@ determine_severity() {
 build_user_msg() {
     local user_first="${MOSYLE_USER_FIRSTNAME:-User}"
     local days_str="${TM_LAST_BACKUP_DAYS} days"
+    [[ "$TM_LAST_BACKUP_DAYS" -eq 0 ]] && days_str="today"
     [[ "$TM_LAST_BACKUP_DAYS" -eq 1 ]] && days_str="1 day"
 
     if [[ "$TM_DRIVE_CONNECTED" == "NO" ]]; then
@@ -241,6 +242,7 @@ To back up now, click the Time Machine icon in your menu bar and choose *Back Up
 build_slack_message() {
     local device_name="${MOSYLE_DEVICE_NAME:-${DI_SERIAL:-unknown}}"
     local days_str="${TM_LAST_BACKUP_DAYS} days"
+    [[ "$TM_LAST_BACKUP_DAYS" -eq 0 ]] && days_str="today"
     [[ "$TM_LAST_BACKUP_DAYS" -eq 1 ]] && days_str="1 day"
 
     local usage_note=""

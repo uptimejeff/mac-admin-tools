@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # common/device-info.sh — Collect device hardware, power, USB, and location info
-# 2026-06-04 v1.1 — call system_profiler/plutil once each; fix MagSafe detection
+# 2026-06-04 v1.2 — fix adapter wattage doubling when name already contains watts
 # Source this file; do not execute directly.
 #
 # After sourcing, call: collect_device_info
@@ -45,7 +45,10 @@ collect_device_info() {
     adapter_watts=$(echo "$ioreg_batt" | grep -oE '"Watts"=[0-9]+' | head -1 \
         | sed 's/"Watts"=//')
     [[ -z "$DI_ADAPTER" ]] && DI_ADAPTER="unknown"
-    [[ -n "$adapter_watts" ]] && DI_ADAPTER="${adapter_watts}W ${DI_ADAPTER}"
+    # Only prepend wattage if the adapter name doesn't already contain it
+    if [[ -n "$adapter_watts" ]] && ! echo "$DI_ADAPTER" | grep -q "${adapter_watts}W"; then
+        DI_ADAPTER="${adapter_watts}W ${DI_ADAPTER}"
+    fi
 
     # --- USB topology (single call) ---
     local usb_raw
