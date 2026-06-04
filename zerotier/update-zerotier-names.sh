@@ -3,7 +3,7 @@
 # Script Purpose:
 # This script updates the name and description of a device in the ZeroTier network.
 # It is intended to be run on macOS devices managed by an MDM solution.
-# 2026-06-04 v1.1 — append [old] to ZT name if /Library/osxgroup/device-inactive exists
+# 2026-06-04 v1.2 — suppress system_profiler stderr; clean API output; [old] flag support
 
 # --- Configuration ---
 
@@ -51,7 +51,7 @@ ZT_URL="https://my.zerotier.com/api"
 ZT_NODE=$(sudo /usr/local/bin/zerotier-cli info | awk '{print $3}')
 
 # Get the device's serial number.
-ZT_SERIAL=$(system_profiler SPHardwareDataType | grep "Serial Number" | awk '{print $NF}')
+ZT_SERIAL=$(system_profiler SPHardwareDataType 2>/dev/null | awk '/Serial Number/{print $NF}')
 
 # Get the current date and time.
 ZT_DATE=$(date +"%Y-%m-%d_%H%M")
@@ -85,12 +85,17 @@ EOF
 )
 
 # Update the node details using the ZeroTier API.
-echo "Updating ZeroTier node details..."
-curl -sS -X POST "${ZT_URL}/network/${ZT_NETWORK}/member/${ZT_NODE}" \
+echo "Updating ZeroTier: ${ZT_NAME} | ${ZT_DESCRIPTION}"
+HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" -X POST "${ZT_URL}/network/${ZT_NETWORK}/member/${ZT_NODE}" \
     -H "Authorization: Bearer ${ZT_TOKEN}" \
     -H "Content-Type: application/json" \
     -H "X-ZT-Auth: ${ZT_TOKEN}" \
-    -d "${ZT_PAYLOAD}"
+    -d "${ZT_PAYLOAD}")
 
-echo -e "\nDone."
+if [ "$HTTP_CODE" = "200" ]; then
+    echo "[OK] ZeroTier updated (HTTP ${HTTP_CODE})"
+else
+    echo "[FAIL] ZeroTier API returned HTTP ${HTTP_CODE}"
+    exit 1
+fi
 exit 0
