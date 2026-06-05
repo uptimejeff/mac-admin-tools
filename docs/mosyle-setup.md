@@ -4,7 +4,7 @@
 
 | Variable | Source | Description |
 |---|---|---|
-| `SLACK_ITDEPT_ALERTS` | grafik.env | IT channel incoming webhook URL |
+| `SLACK_ITDEPT_ALERTS` | your env file | IT channel incoming webhook URL |
 | `SLACK_BOT_TOKEN` | Phase 2 | xoxb- token for user DMs |
 | `MOSYLE_DEVICE_NAME` | %DeviceName% | Device display name |
 | `MOSYLE_USER_EMAIL` | %Email% | Console user email |
