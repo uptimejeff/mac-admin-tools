@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # time-machine/tm-advisor.sh — Time Machine status advisor for Mosyle
-# 2026-06-04 v2.1 — POST to HealthAdvisor API on every run (HA_URL + HA_API_TOKEN)
+# 2026-06-04 v2.2 — sanitize MOSYLE_DEVICE_NAME for shell safety; log HA_URL presence
 #                   HA_URL env var for dashboard base URL
 #
 # Collects Time Machine status and sends Slack alerts based on days since
@@ -46,6 +46,9 @@ fi
 
 # log → logfile only (not stdout — keeps Mosyle table clean)
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [tm-advisor] $*" >> "$LOGFILE"; }
+
+# Sanitize a string for safe use in shell/JSON — strip control chars, keep printable ASCII + spaces
+sanitize_str() { printf '%s' "$*" | tr -d '\000-\037\177' | sed "s/['\`\\\\]//g"; }
 # mosyle_out → stdout only (one compact line visible in Mosyle response column)
 mosyle_out() { echo "$*"; }
 
@@ -492,7 +495,11 @@ main() {
     collect_device_info
     determine_severity
 
-    log "Status: SEVERITY=${SEVERITY} DAYS=${TM_LAST_BACKUP_DAYS} CONNECTED=${TM_DRIVE_CONNECTED} MOUNTED=${TM_DRIVE_MOUNTED}"
+    # Sanitize device name — Mosyle substitutes %DeviceName% directly into shell;
+    # names with $, backticks, or backslashes would be interpreted by bash
+    MOSYLE_DEVICE_NAME=$(sanitize_str "${MOSYLE_DEVICE_NAME:-}")
+
+    log "Status: SEVERITY=${SEVERITY} DAYS=${TM_LAST_BACKUP_DAYS} CONNECTED=${TM_DRIVE_CONNECTED} MOUNTED=${TM_DRIVE_MOUNTED} HA_URL=${HA_URL:+set}"
 
     # Always post to HealthAdvisor dashboard regardless of severity
     post_to_healthadvisor
