@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # time-machine/tm-advisor.sh — Time Machine status advisor for Mosyle
-# 2026-06-04 v1.9 — fix SnapshotDates sort (plist order not guaranteed); BASH_SOURCE fix
+# 2026-06-04 v2.0 — clean Mosyle output: log→file only, single compact line to stdout
 #                   HA_URL env var for dashboard base URL
 #
 # Collects Time Machine status and sends Slack alerts based on days since
@@ -43,7 +43,10 @@ else
     LOGFILE="/tmp/tm-advisor.log"
 fi
 
-log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [tm-advisor] $*" | tee -a "$LOGFILE"; }
+# log → logfile only (not stdout — keeps Mosyle table clean)
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [tm-advisor] $*" >> "$LOGFILE"; }
+# mosyle_out → stdout only (one compact line visible in Mosyle response column)
+mosyle_out() { echo "$*"; }
 
 # ── Thresholds ────────────────────────────────────────────────────────────────
 TM_THRESHOLD_NOTICE=${TM_THRESHOLD_NOTICE:-4}
@@ -382,8 +385,8 @@ main() {
 
     if [[ "$SEVERITY" == "OK" ]]; then
         log "TM OK — last backup ${TM_LAST_BACKUP_DAYS} days ago, no action needed"
-        # Clear state so next alert fires immediately if status worsens
         [[ -f "$STATE_FILE" ]] && printf 'severity=OK\nsent_epoch=%s\n' "$(date +%s)" > "$STATE_FILE" || true
+        mosyle_out "[OK] ${MOSYLE_DEVICE_NAME:-${DI_SERIAL:-unknown}} | ${TM_LAST_BACKUP_DAYS}d ago | drive=${TM_DRIVE_CONNECTED}/${TM_DRIVE_MOUNTED} | ${DI_LOCATION_NOTE:-?}"
         exit 0
     fi
 
@@ -405,6 +408,11 @@ main() {
     fi
 
     log "Done"
+
+    # Compact single-line summary for Mosyle response column
+    local days_disp="${TM_LAST_BACKUP_DAYS}d"
+    [[ "$TM_LAST_BACKUP_DAYS" -lt 0 ]] && days_disp="unknown"
+    mosyle_out "[${SEVERITY}] ${MOSYLE_DEVICE_NAME:-${DI_SERIAL:-unknown}} | ${days_disp} | drive=${TM_DRIVE_CONNECTED}/${TM_DRIVE_MOUNTED} | ${DI_LOCATION_NOTE:-?}"
 }
 
 main "$@"
