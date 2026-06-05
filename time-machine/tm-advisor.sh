@@ -21,7 +21,7 @@
 #   TM_THRESHOLD_URGENT        — days before URGENT (default 14)
 #   TM_ALERT_REPEAT_DAYS       — re-alert on same severity after N days (default 7)
 #   HA_URL                     — HealthAdvisor base URL (Slack links + API posts)
-#                                e.g. http://100.99.1.123:3000
+#                                e.g. http://<healthadvisor-host>:3000
 #   HA_API_TOKEN               — HealthAdvisor API token (from .env API_TOKEN)
 #   MOSYLE_DEVICE_NAME         — injected by Mosyle as %DeviceName%
 #   MOSYLE_USER_EMAIL          — injected by Mosyle as %Email%

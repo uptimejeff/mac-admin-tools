@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # common/device-info.sh — Collect device hardware, power, USB, and location info
-# 2026-06-04 v1.3 — location: single curl -4 ipinfo.io call; M4 adapter name fallback
+# 2026-06-04 v1.4 — office IP detection via OFFICE_IP_PREFIXES env var (client-configurable)
 # Source this file; do not execute directly.
 #
 # After sourcing, call: collect_device_info
@@ -106,13 +106,17 @@ collect_device_info() {
             DI_LOCATION="$ip (no geo data)"
         fi
 
-        case "$DI_PUBLIC_IP" in
-            72.203.214.*|70.191.128.*)
-                DI_LOCATION_NOTE="likely: office"
-                ;;
-            *)
-                DI_LOCATION_NOTE="likely: home or remote"
-                ;;
-        esac
+        # OFFICE_IP_PREFIXES: space-separated list of IP prefixes that identify
+        # your office network (e.g. "203.0.113. 198.51.100."). Leave unset for
+        # generic remote/home classification only.
+        DI_LOCATION_NOTE="likely: remote"
+        if [[ -n "${OFFICE_IP_PREFIXES:-}" ]]; then
+            for _pfx in $OFFICE_IP_PREFIXES; do
+                if [[ "$DI_PUBLIC_IP" == ${_pfx}* ]]; then
+                    DI_LOCATION_NOTE="likely: office"
+                    break
+                fi
+            done
+        fi
     fi
 }
