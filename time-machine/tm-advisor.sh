@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # time-machine/tm-advisor.sh — Time Machine status advisor for Mosyle
-# 2026-06-04 v2.0 — clean Mosyle output: log→file only, single compact line to stdout
+# 2026-06-04 v2.1 — POST to HealthAdvisor API on every run (HA_URL + HA_API_TOKEN)
 #                   HA_URL env var for dashboard base URL
 #
 # Collects Time Machine status and sends Slack alerts based on days since
@@ -20,8 +20,9 @@
 #   TM_THRESHOLD_ALERT         — days before ALERT (default 7)
 #   TM_THRESHOLD_URGENT        — days before URGENT (default 14)
 #   TM_ALERT_REPEAT_DAYS       — re-alert on same severity after N days (default 7)
-#   HA_URL                     — HealthAdvisor dashboard base URL for Slack links
+#   HA_URL                     — HealthAdvisor base URL (Slack links + API posts)
 #                                e.g. http://100.99.1.123:3000
+#   HA_API_TOKEN               — HealthAdvisor API token (from .env API_TOKEN)
 #   MOSYLE_DEVICE_NAME         — injected by Mosyle as %DeviceName%
 #   MOSYLE_USER_EMAIL          — injected by Mosyle as %Email%
 #   MOSYLE_USER_FIRSTNAME      — injected by Mosyle as %FirstName%
@@ -90,6 +91,91 @@ should_send_alert() {
 save_alert_state() {
     local severity="$1"
     printf 'severity=%s\nsent_epoch=%s\n' "$severity" "$(date +%s)" > "$STATE_FILE" 2>/dev/null || true
+}
+
+# ── Post check result to HealthAdvisor dashboard ─────────────────────────────
+# Runs after collect_tm_status + collect_device_info.
+# Silently skipped if HA_URL or HA_API_TOKEN are not set.
+post_to_healthadvisor() {
+    [[ -z "${HA_URL:-}"       ]] && return 0
+    [[ -z "${HA_API_TOKEN:-}" ]] && return 0
+
+    local status_num=0
+    case "$SEVERITY" in
+        NOTICE)       status_num=1 ;;
+        ALERT)        status_num=1 ;;
+        URGENT)       status_num=2 ;;
+        UNCONFIGURED) status_num=1 ;;
+        UNKNOWN)      status_num=1 ;;
+    esac
+
+    local summary="${SEVERITY_EMOJI} ${SEVERITY}: ${TM_LAST_BACKUP_DAYS}d | drive=${TM_DRIVE_CONNECTED}/${TM_DRIVE_MOUNTED}"
+    [[ "$TM_LAST_BACKUP_DAYS" -lt 0 ]] && summary="${SEVERITY_EMOJI} ${SEVERITY}: unknown | drive=${TM_DRIVE_CONNECTED}/${TM_DRIVE_MOUNTED}"
+
+    # Build payload via python3 to avoid bash JSON escaping issues
+    local payload
+    payload=$(python3 - <<PYEOF 2>/dev/null
+import json, datetime
+
+raw = {
+    "tm_enabled":       ${TM_CONFIGURED:+True}${TM_CONFIGURED:-False},
+    "dest_configured":  "${TM_CONFIGURED}" == "YES",
+    "dest_name":        "${TM_DEST_NAME:-}",
+    "dest_uuid":        "${TM_DEST_UUID:-}",
+    "dest_kind":        "${TM_DEST_KIND:-}",
+    "drive_connected":  "${TM_DRIVE_CONNECTED}" == "YES",
+    "drive_mounted":    "${TM_DRIVE_MOUNTED}" == "YES",
+    "last_backup":      "${TM_LAST_BACKUP:-}",
+    "last_backup_src":  "${TM_LAST_BACKUP_SRC:-}",
+    "last_attempt":     "${TM_LAST_ATTEMPT:-}",
+    "days_since_backup": ${TM_LAST_BACKUP_DAYS} if ${TM_LAST_BACKUP_DAYS} >= 0 else None,
+    "result_code":      ${TM_RESULT_CODE:-0},
+    "requires_ac":      "${TM_REQUIRES_AC:-}",
+    "drive_used_pct":   ${TM_DRIVE_USED_PCT:-0} or None,
+    "on_ac":            ${DI_AC:-0} == 1,
+    "adapter":          "${DI_ADAPTER:-}",
+    "battery_pct":      "${DI_BATT_PCT:-}",
+    "magsafe":          "${DI_MAGSAFE:-No}" == "Yes",
+    "usb_topology":     "${DI_USB_TOPOLOGY:-}",
+    "tb_ports":         ${DI_TB_PORTS:-0},
+    "tb_devices":       "${DI_TB_DEVICES:-none}",
+    "location_ip":      "${DI_PUBLIC_IP:-}",
+    "location_city":    "${DI_LOCATION:-}",
+    "location_region":  "",
+    "location_org":     "",
+    "location_note":    "${DI_LOCATION_NOTE:-}",
+}
+
+payload = {
+    "machine_id":    "${DI_SERIAL:-UNKNOWN}",
+    "hostname":      "${MOSYLE_DEVICE_NAME:-${DI_SERIAL:-unknown}}",
+    "agent_version": "tm-advisor-2.0",
+    "collected_at":  datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "checks": [{
+        "check_name": "time_machine",
+        "status":     ${status_num},
+        "summary":    "${summary}",
+        "raw_data":   raw,
+    }]
+}
+print(json.dumps(payload))
+PYEOF
+    )
+
+    [[ -z "$payload" ]] && { log "HA post: failed to build payload"; return 0; }
+
+    local http_code
+    http_code=$(curl -sSL -o /dev/null -w "%{http_code}" \
+        -X POST "${HA_URL}/api/v1/checkin" \
+        -H "Content-Type: application/json" \
+        -H "X-API-Token: ${HA_API_TOKEN}" \
+        -d "$payload" 2>/dev/null)
+
+    if [[ "$http_code" == "200" ]]; then
+        log "HA checkin posted (HTTP 200)"
+    else
+        log "HA checkin failed (HTTP ${http_code:-000})"
+    fi
 }
 
 # ── Load common libraries ─────────────────────────────────────────────────────
@@ -382,6 +468,9 @@ main() {
     determine_severity
 
     log "Status: SEVERITY=${SEVERITY} DAYS=${TM_LAST_BACKUP_DAYS} CONNECTED=${TM_DRIVE_CONNECTED} MOUNTED=${TM_DRIVE_MOUNTED}"
+
+    # Always post to HealthAdvisor dashboard regardless of severity
+    post_to_healthadvisor
 
     if [[ "$SEVERITY" == "OK" ]]; then
         log "TM OK — last backup ${TM_LAST_BACKUP_DAYS} days ago, no action needed"
