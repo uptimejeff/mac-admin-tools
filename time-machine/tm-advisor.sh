@@ -112,23 +112,64 @@ post_to_healthadvisor() {
     local summary="${SEVERITY_EMOJI} ${SEVERITY}: ${TM_LAST_BACKUP_DAYS}d | drive=${TM_DRIVE_CONNECTED}/${TM_DRIVE_MOUNTED}"
     [[ "$TM_LAST_BACKUP_DAYS" -lt 0 ]] && summary="${SEVERITY_EMOJI} ${SEVERITY}: unknown | drive=${TM_DRIVE_CONNECTED}/${TM_DRIVE_MOUNTED}"
 
-    # Export all values as env vars — Python reads them cleanly, no bash-in-Python mixing
+    # Build payload via Python written to a temp file.
+    # Cannot use heredoc (<<) here — when run via "curl | bash", stdin is the script
+    # itself and heredoc would consume it. Write to a temp file via printf instead.
+    local _py; _py=$(mktemp /tmp/ha_payload.XXXXXX.py)
+    # shellcheck disable=SC2016
+    printf '%s\n' \
+        'import json,datetime,os' \
+        'e=os.environ.get' \
+        'days=int(e("_HA_DAYS","-1") or -1)' \
+        'raw={' \
+        '  "dest_configured": e("_HA_TM_CONFIGURED")=="YES",' \
+        '  "dest_name":       e("_HA_DEST_NAME",""),' \
+        '  "dest_uuid":       e("_HA_DEST_UUID",""),' \
+        '  "dest_kind":       e("_HA_DEST_KIND",""),' \
+        '  "drive_connected": e("_HA_CONNECTED")=="YES",' \
+        '  "drive_mounted":   e("_HA_MOUNTED")=="YES",' \
+        '  "last_backup":     e("_HA_LAST_BACKUP",""),' \
+        '  "last_backup_src": e("_HA_LAST_BACKUP_SRC",""),' \
+        '  "last_attempt":    e("_HA_LAST_ATTEMPT",""),' \
+        '  "days_since_backup": days if days>=0 else None,' \
+        '  "result_code":     e("_HA_RESULT",""),' \
+        '  "requires_ac":     e("_HA_REQUIRES_AC",""),' \
+        '  "drive_used_pct":  int(e("_HA_DRIVE_PCT","0") or 0) or None,' \
+        '  "on_ac":           e("_HA_ON_AC","0")=="1",' \
+        '  "adapter":         e("_HA_ADAPTER",""),' \
+        '  "battery_pct":     e("_HA_BATT",""),' \
+        '  "magsafe":         e("_HA_MAGSAFE","No")=="Yes",' \
+        '  "usb_topology":    e("_HA_USB",""),' \
+        '  "tb_ports":        int(e("_HA_TB_PORTS","0") or 0),' \
+        '  "tb_devices":      e("_HA_TB_DEV","none"),' \
+        '  "location_ip":     e("_HA_IP",""),' \
+        '  "location_city":   e("_HA_LOCATION",""),' \
+        '  "location_note":   e("_HA_LOC_NOTE",""),' \
+        '}' \
+        'p={"machine_id":e("_HA_SERIAL","UNKNOWN"),"hostname":e("_HA_HOSTNAME","unknown"),' \
+        '   "agent_version":"tm-advisor-2.1",' \
+        '   "collected_at":datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),' \
+        '   "checks":[{"check_name":"time_machine","status":int(e("_HA_STATUS","0")),' \
+        '              "summary":e("_HA_SUMMARY",""),"raw_data":raw}]}' \
+        'print(json.dumps(p))' \
+        > "$_py"
+
     local payload
     payload=$(
         export _HA_SERIAL="${DI_SERIAL:-UNKNOWN}"
         export _HA_HOSTNAME="${MOSYLE_DEVICE_NAME:-${DI_SERIAL:-unknown}}"
         export _HA_STATUS="$status_num"
         export _HA_SUMMARY="$summary"
-        export _HA_TM_CONFIGURED="$TM_CONFIGURED"
-        export _HA_DEST_NAME="$TM_DEST_NAME"
+        export _HA_TM_CONFIGURED="${TM_CONFIGURED:-NO}"
+        export _HA_DEST_NAME="${TM_DEST_NAME:-}"
         export _HA_DEST_UUID="${TM_DEST_UUID:-}"
         export _HA_DEST_KIND="${TM_DEST_KIND:-}"
-        export _HA_CONNECTED="$TM_DRIVE_CONNECTED"
-        export _HA_MOUNTED="$TM_DRIVE_MOUNTED"
+        export _HA_CONNECTED="${TM_DRIVE_CONNECTED:-NO}"
+        export _HA_MOUNTED="${TM_DRIVE_MOUNTED:-NO}"
         export _HA_LAST_BACKUP="${TM_LAST_BACKUP:-}"
         export _HA_LAST_BACKUP_SRC="${TM_LAST_BACKUP_SRC:-}"
         export _HA_LAST_ATTEMPT="${TM_LAST_ATTEMPT:-}"
-        export _HA_DAYS="${TM_LAST_BACKUP_DAYS}"
+        export _HA_DAYS="${TM_LAST_BACKUP_DAYS:--1}"
         export _HA_RESULT="${TM_RESULT_CODE:-}"
         export _HA_REQUIRES_AC="${TM_REQUIRES_AC:-}"
         export _HA_DRIVE_PCT="${TM_DRIVE_USED_PCT:-}"
@@ -142,54 +183,9 @@ post_to_healthadvisor() {
         export _HA_IP="${DI_PUBLIC_IP:-}"
         export _HA_LOCATION="${DI_LOCATION:-}"
         export _HA_LOC_NOTE="${DI_LOCATION_NOTE:-}"
-
-        python3 - <<'PYEOF' 2>/dev/null
-import json, datetime, os
-
-e = os.environ.get
-days = int(e('_HA_DAYS', '-1'))
-
-raw = {
-    "dest_configured":   e('_HA_TM_CONFIGURED') == 'YES',
-    "dest_name":         e('_HA_DEST_NAME', ''),
-    "dest_uuid":         e('_HA_DEST_UUID', ''),
-    "dest_kind":         e('_HA_DEST_KIND', ''),
-    "drive_connected":   e('_HA_CONNECTED') == 'YES',
-    "drive_mounted":     e('_HA_MOUNTED') == 'YES',
-    "last_backup":       e('_HA_LAST_BACKUP', ''),
-    "last_backup_src":   e('_HA_LAST_BACKUP_SRC', ''),
-    "last_attempt":      e('_HA_LAST_ATTEMPT', ''),
-    "days_since_backup": days if days >= 0 else None,
-    "result_code":       e('_HA_RESULT', ''),
-    "requires_ac":       e('_HA_REQUIRES_AC', ''),
-    "drive_used_pct":    int(e('_HA_DRIVE_PCT')) if e('_HA_DRIVE_PCT') else None,
-    "on_ac":             e('_HA_ON_AC', '0') == '1',
-    "adapter":           e('_HA_ADAPTER', ''),
-    "battery_pct":       e('_HA_BATT', ''),
-    "magsafe":           e('_HA_MAGSAFE', 'No') == 'Yes',
-    "usb_topology":      e('_HA_USB', ''),
-    "tb_ports":          int(e('_HA_TB_PORTS', '0') or 0),
-    "tb_devices":        e('_HA_TB_DEV', 'none'),
-    "location_ip":       e('_HA_IP', ''),
-    "location_city":     e('_HA_LOCATION', ''),
-    "location_note":     e('_HA_LOC_NOTE', ''),
-}
-
-payload = {
-    "machine_id":    e('_HA_SERIAL', 'UNKNOWN'),
-    "hostname":      e('_HA_HOSTNAME', 'unknown'),
-    "agent_version": "tm-advisor-2.1",
-    "collected_at":  datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "checks": [{
-        "check_name": "time_machine",
-        "status":     int(e('_HA_STATUS', '0')),
-        "summary":    e('_HA_SUMMARY', ''),
-        "raw_data":   raw,
-    }]
-}
-print(json.dumps(payload))
-PYEOF
+        python3 "$_py" 2>/dev/null
     )
+    rm -f "$_py"
 
     [[ -z "$payload" ]] && { log "HA post: failed to build payload"; return 0; }
 
