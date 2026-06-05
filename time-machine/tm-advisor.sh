@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # time-machine/tm-advisor.sh — Time Machine status advisor for Mosyle
-# 2026-06-04 v2.2 — sanitize MOSYLE_DEVICE_NAME for shell safety; log HA_URL presence
+# 2026-06-04 v2.3 — jitter sleep to prevent simultaneous Mosyle-triggered DB contention
 #                   HA_URL env var for dashboard base URL
 #
 # Collects Time Machine status and sends Slack alerts based on days since
@@ -490,6 +490,9 @@ Console user:     ${DI_CONSOLE_USER:-unknown}"
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
+    # Jitter: random 0-60s sleep to spread simultaneous Mosyle-triggered runs
+    # Prevents SQLite write contention when all 60 devices fire at once on script save
+    sleep $(( RANDOM % 60 ))
     log "Starting TM advisor check"
     collect_tm_status
     collect_device_info
