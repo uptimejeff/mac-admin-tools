@@ -2,7 +2,8 @@
 # update-zerotier-names.sh
 # Updates ZeroTier member name and description for this device via the ZeroTier API.
 # Intended for MDM deployment (runs as root). Injected env vars supply credentials.
-# 2026-06-05 v1.3 — Mosyle-compliant single-line output; remove redundant sudo; suppress noise
+# 2026-06-05 v1.3; 2026-06-05 v1.4 — Mosyle-compliant single-line output; remove redundant sudo; suppress noise
+# 2026-06-05 v1.4 — add v2 tag to ZT description field
 
 OK=$'\xe2\x9c\x85'
 FAIL=$'\xe2\x9d\x8c'
@@ -61,9 +62,9 @@ else
 fi
 
 if [[ -z "$ZT_SERIAL" ]]; then
-    ZT_DESCRIPTION="ERR:no_serial | ${ZT_DATE}"
+    ZT_DESCRIPTION="ERR:no_serial | ${ZT_DATE} | v2"
 else
-    ZT_DESCRIPTION="SN:${ZT_SERIAL} | ${ZT_DATE}"
+    ZT_DESCRIPTION="SN:${ZT_SERIAL} | ${ZT_DATE} | v2"
 fi
 
 if [[ -z "$ZT_NODE" ]]; then
