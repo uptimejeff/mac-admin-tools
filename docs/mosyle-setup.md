@@ -39,7 +39,7 @@ export HA_API_TOKEN="TOKEN_HERE"
 curl -fsSL https://raw.githubusercontent.com/uptimejeff/mac-admin-tools/main/time-machine/tm-advisor.sh | bash
 ```
 
-## Script 2: tm-exclusions (Mosyle scheduled, every checkin)
+## Script 2: tm-enforce (Mosyle scheduled, every checkin)
 
 Scope: All Devices | Trigger: Every checkin (idempotent — safe to repeat)
 Sets RequiresACPower=false fleet-wide. Adds sticky TM exclusions per user:
@@ -47,7 +47,7 @@ CloudStorage, Mail message cache (keeps signatures/rules), MobileSync backups,
 ~/Library/Caches, Adobe media cache, Trash. No secrets required.
 
 ```bash
-# ── tm-exclusions ─────────────────────────────────────────────────────────────
+# ── tm-enforce ─────────────────────────────────────────────────────────────
 # Purpose:  Enforce TM settings and add per-user backup exclusions fleet-wide.
 #           1. Sets RequiresACPower=false (allow backup on battery)
 #           2. Detects real console user (skips gadmin/root)
@@ -63,10 +63,10 @@ CloudStorage, Mail message cache (keeps signatures/rules), MobileSync backups,
 # Scope:    All Devices
 # Schedule: Every checkin (idempotent — no harm running repeatedly)
 # Secrets:  None
-# GitHub:   uptimejeff/mac-admin-tools / time-machine/tm-exclusions.sh
+# GitHub:   uptimejeff/mac-admin-tools / time-machine/tm-enforce.sh
 # ─────────────────────────────────────────────────────────────────────────────
 export MOSYLE_DEVICE_NAME="%DeviceName%"
-curl -fsSL https://raw.githubusercontent.com/uptimejeff/mac-admin-tools/main/time-machine/tm-exclusions.sh | bash
+curl -fsSL https://raw.githubusercontent.com/uptimejeff/mac-admin-tools/main/time-machine/tm-enforce.sh | bash
 ```
 
 ## Script 3: tm-autobackup LaunchDaemon (one-time deploy)
