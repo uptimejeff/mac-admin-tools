@@ -20,16 +20,22 @@ Sends Slack alert to IT if backup is stale (4/7/14d thresholds).
 Posts status to HealthAdvisor dashboard if HA_URL is set.
 
 ```bash
-# tm-advisor — TM status check, Slack alerts, HealthAdvisor POST
-# Scope: All Devices | Schedule: every 4h
-# Secrets: SLACK_ITDEPT_ALERTS webhook from grafik.env; never commit to GitHub
+# ── tm-advisor ────────────────────────────────────────────────────────────────
+# Purpose:  Check Time Machine backup status on each device.
+#           Send Slack alert to IT if backup is stale (thresholds: 4/7/14 days).
+#           Post rich status JSON to HealthAdvisor dashboard.
+# Scope:    All Devices
+# Schedule: Every 4 hours + runs immediately on script save
+# Secrets:  SLACK_ITDEPT_ALERTS — Incoming Webhook URL (IT alerts channel)
+#           HA_API_TOKEN — HealthAdvisor API token
+# GitHub:   uptimejeff/mac-admin-tools / time-machine/tm-advisor.sh
+# ─────────────────────────────────────────────────────────────────────────────
 export SLACK_ITDEPT_ALERTS="WEBHOOK_URL_HERE"
 export MOSYLE_DEVICE_NAME="%DeviceName%"
 export MOSYLE_USER_EMAIL="%Email%"
 export MOSYLE_USER_FIRSTNAME="%FirstName%"
-# Optional: POST to HealthAdvisor dashboard
-# export HA_URL="http://100.99.1.123:3000"
-# export HA_API_TOKEN="TOKEN_HERE"
+export HA_URL="http://100.99.1.123:3000"
+export HA_API_TOKEN="TOKEN_HERE"
 curl -fsSL https://raw.githubusercontent.com/uptimejeff/mac-admin-tools/main/time-machine/tm-advisor.sh | bash
 ```
 
@@ -41,9 +47,24 @@ CloudStorage, Mail message cache (keeps signatures/rules), MobileSync backups,
 ~/Library/Caches, Adobe media cache, Trash. No secrets required.
 
 ```bash
-# tm-exclusions — TM settings enforcement + per-user exclusions
-# Scope: All Devices | Schedule: every checkin
-# No secrets needed — no vars to set
+# ── tm-exclusions ─────────────────────────────────────────────────────────────
+# Purpose:  Enforce TM settings and add per-user backup exclusions fleet-wide.
+#           1. Sets RequiresACPower=false (allow backup on battery)
+#           2. Detects real console user (skips gadmin/root)
+#           3. Adds sticky exclusions via tmutil (idempotent — safe to repeat):
+#              - ~/Library/CloudStorage     (Google Drive, iCloud, OneDrive)
+#              - ~/Library/Mobile Documents (iCloud Drive legacy)
+#              - ~/Library/Mail/V10/<acct>/ (IMAP cache; MailData/ kept —
+#                                            preserves signatures & rules)
+#              - ~/Library/Application Support/MobileSync/Backup (iPhone/iPad)
+#              - ~/Library/Caches
+#              - Adobe media cache (if present)
+#              - ~/.Trash
+# Scope:    All Devices
+# Schedule: Every checkin (idempotent — no harm running repeatedly)
+# Secrets:  None
+# GitHub:   uptimejeff/mac-admin-tools / time-machine/tm-exclusions.sh
+# ─────────────────────────────────────────────────────────────────────────────
 export MOSYLE_DEVICE_NAME="%DeviceName%"
 curl -fsSL https://raw.githubusercontent.com/uptimejeff/mac-admin-tools/main/time-machine/tm-exclusions.sh | bash
 ```
